@@ -78,7 +78,7 @@ if (Test-Path "$env:SystemRoot\Sysnative\reg.exe") {
 	$SysPath = "$env:SystemRoot\Sysnative"
 }
 
-if (!(Test-Path "$SysPath\ConsumerESUMgr.dll")) {
+if (-Not (Test-Path "$SysPath\ConsumerESUMgr.dll")) {
 	CONOUT "==== ERROR ====`r`n"
 	CONOUT "ConsumerESUMgr.dll is not detected."
 	CONOUT "Make sure to install update 2025-06 KB5061087 (19045.6036) or later."
@@ -87,38 +87,38 @@ if (!(Test-Path "$SysPath\ConsumerESUMgr.dll")) {
 
 #region Globals
 $eeStatus = @{
-	0 = "Unknown";
-	1 = "Ineligible";
-	2 = "Eligible";
-	3 = "DeviceEnrolled";
-	4 = "ReEnrollReq";
-	5 = "MSAEnrolled";
-	6 = "ConsumerESUInactive";
-	7 = "CommercialMigratedDevice";
-	8 = "LoginWithPrimaryAccountToEnroll";
-	9 = "LoginWithPrimaryAccountToCompletePreOrder";
-	10 = "ComingSoon";
-	11 = "EEAFreeMSAEnrolled";
-	12 = "EEAPaidMSAEnrolled";
-	13 = "WarnInactiveMSA";
-	14 = "ReEnrollReqInactiveMSA";
+	0 = " 0 Unknown";
+	1 = " 1 Ineligible";
+	2 = " 2 Eligible";
+	3 = " 3 DeviceEnrolled";
+	4 = " 4 ReEnrollReq";
+	5 = " 5 MSAEnrolled";
+	6 = " 6 ConsumerESUInactive";
+	7 = " 7 CommercialMigratedDevice";
+	8 = " 8 LoginWithPrimaryAccountToEnroll";
+	9 = " 9 LoginWithPrimaryAccountToCompletePreOrder";
+	10 = "10 ComingSoon";
+	11 = "11 EEAFreeMSAEnrolled";
+	12 = "12 EEAPaidMSAEnrolled";
+	13 = "13 WarnInactiveMSA";
+	14 = "14 ReEnrollReqInactiveMSA";
 }
 $eeResult = @{
-	1 = "SUCCESS";
-	2 = "CONSUMER_ESU_PROGRAM_NOT_ACTIVE";
-	3 = "NON_CONSUMER_DEVICE";
-	4 = "COMMERCIAL_DEVICE";
-	5 = "NON_ADMIN";
-	6 = "CHILD_ACCOUNT";
-	7 = "REGION_IN_EMBARGOED_COUNTRY";
-	8 = "AZURE_DEVICE";
-	9 = "COMMERCIAL_MIGRATED_DEVICE";
-	10 = "LOGIN_WITH_PRIMARY_ACCOUNT_TO_COMPLETE_PREORDER";
-	11 = "CONSUMER_ESU_FEATURE_DISABLED";
-	12 = "KEY_BASED_ESU";
-	13 = "EEA_REGION_POLICY_ENABLED";
-	14 = "WARN_INACTIVE_MSA";
-	15 = "REENROLL_REQ_INACTIVE_MSA";
+	1 = " 1 SUCCESS";
+	2 = " 2 CONSUMER_ESU_PROGRAM_NOT_ACTIVE";
+	3 = " 3 NON_CONSUMER_DEVICE";
+	4 = " 4 COMMERCIAL_DEVICE";
+	5 = " 5 NON_ADMIN";
+	6 = " 6 CHILD_ACCOUNT";
+	7 = " 7 REGION_IN_EMBARGOED_COUNTRY";
+	8 = " 8 AZURE_DEVICE";
+	9 = " 9 COMMERCIAL_MIGRATED_DEVICE";
+	10 = "10 LOGIN_WITH_PRIMARY_ACCOUNT_TO_COMPLETE_PREORDER";
+	11 = "11 CONSUMER_ESU_FEATURE_DISABLED";
+	12 = "12 KEY_BASED_ESU";
+	13 = "13 EEA_REGION_POLICY_ENABLED";
+	14 = "14 WARN_INACTIVE_MSA";
+	15 = "15 REENROLL_REQ_INACTIVE_MSA";
 	100 = "UNKNOWN_ERROR";
 	101 = "CONSUMER_ESU_PROGRAM_ACTIVE_CHECK_FAILED";
 	102 = "LICENSE_CHECK_FAILED";
@@ -309,7 +309,7 @@ function TokenLocalAccount
 	$auth = [Windows.Security.Authentication.OnlineId.OnlineIdSystemAuthenticator]::Default
 	if ($null -eq $auth) {return $null}
 	$auth.ApplicationId = [Guid]"D122D5C5-5240-4164-B88C-986B5F1CF7F9"
-	$request = [Windows.Security.Authentication.OnlineId.OnlineIdServiceTicketRequest,Windows,ContentType=WindowsRuntime]::new("www.microsoft.com", "MBI_SSL")
+	$request = [Windows.Security.Authentication.OnlineId.OnlineIdServiceTicketRequest,Windows,ContentType=WindowsRuntime]::new("service::www.microsoft.com::MBI_SSL&ssoappgroup=windows&clientid=d122d5c5-5240-4164-b88c-986b5f1cf7f9")
 	if ($null -eq $request) {return $null}
 	$result = AwaitOperation ($auth.GetTicketAsync($request)) ([Windows.Security.Authentication.OnlineId.OnlineIdSystemTicketResult,Windows,ContentType=WindowsRuntime])
 	if ($null -eq $result -Or $result.Status -ne 0) {return $null}
@@ -319,16 +319,13 @@ function TokenLocalAccount
 
 function ObtainToken
 {
-	CONOUT "`nObtain MSA Token ..."
+	CONOUT "`nObtain MS Account Token ..."
 	$msaToken = $null
 	if ($null -eq $msaToken -And ($bDefault -Or $bMsAccountUser)) {
 		$msaToken = TokenMsAccountUser
 	}
 	if ($null -eq $msaToken -And ($bDefault -Or $bMsAccountStore)) {
 		$msaToken = TokenMsAccountStore
-	}
-	if ($null -eq $msaToken -And ($bLocalAccount)) {
-		$msaToken = TokenLocalAccount
 	}
 	if ($null -eq $msaToken) {
 		CONOUT "Operation Failed."
@@ -416,7 +413,7 @@ function SetConfig($fID, $fState, $fReg)
 	return
 }
 
-function ResetConfig($fID, $fReg)
+function DefConfig($fID, $fReg)
 {
 	try {
 		$fInfo = [UInt32[]]::new(3)
@@ -541,16 +538,83 @@ function RunRemoveLicense
 }
 #endregion
 
+#region LicenseManager
+function DoRequestLicense
+{
+	$token = $script:accToken
+	if ($token.IndexOf("t=") -eq 0) {$token = $token.Substring(2)} 
+	$Headers = [ordered]@{'Authorization' = ("WLID1.0=" + $token)}
+	$txt = '<?xml version="1.0" encoding="utf-8" ?><ClientChallenge xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://schemas.microsoft.com/onestore/security/mkms/LicReq/v1" Version="2"><LicenseProtocolVersion>5</LicenseProtocolVersion><SigningKeyVersion>1</SigningKeyVersion><ClientVersion>2</ClientVersion></ClientChallenge>'
+	$chl = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($txt))
+	$Body = @"
+{"clientChallenge":"$chl","concurrencyMode":"Rude","contentId":"b58e6308-bb55-e064-03ec-f6a5b029056e","deviceContext":{"hardwareManufacturer":"Public","hardwareType":"Public","mobileOperator":"Public"},"licenseVersion":4,"market":"US","needKey":true,"users":{}}
+"@
+
+	try {
+		$Response = Invoke-RestMethod -UseBasicParsing -Uri 'https://licensing.mp.microsoft.com/v6.0/licenses/content' -Method POST -ContentType 'application/json' -Headers $Headers -Body $Body
+	} catch {
+		$host.UI.WriteLine('Red', 'Black', $_.Exception.Message + $_.ErrorDetails.Message)
+		return $FALSE
+	}
+
+	$lckey = $Response.license.keys[0].value
+	$lease = $Response.license.leases[0].value
+	if ($null -eq $lckey -Or $null -eq $lease) {return $FALSE}
+
+	$ClipDir = "$env:ProgramData\Microsoft\Windows\ClipSVC\"
+	$ClipLic = $ClipDir + "Install\Apps\"
+	if (-Not (Test-Path -PathType Container $ClipLic)) {
+		try {$null = New-Item -Path "$ClipLic" -ItemType Directory -Force -EA 1} catch {return $FALSE}
+	}
+
+	[IO.File]::WriteAllBytes($ClipLic + "9N87TZ9KBJ74_1.xml", ([Convert]::FromBase64String($lease)))
+	[IO.File]::WriteAllBytes($ClipLic + "9N87TZ9KBJ74_2.xml", ([Convert]::FromBase64String($lckey)))
+	if (-Not (Test-Path ($ClipLic + "9N87TZ9KBJ74*.xml"))) {
+		return $FALSE
+	}
+
+	if (Test-Path "$SysPath\ClipUp.exe") {
+		& $SysPath\cmd.exe '/c' $SysPath\ClipUp.exe -p > $null
+	} else {
+		Restart-Service ClipSVC -Force -Confirm:$false
+	}
+
+	if (-Not (Test-Path ($ClipDir + "Archive\Apps\278090df-33b0-7dfd-6637-2911fb0c0cec.xml"))) {
+		return $FALSE
+	}
+
+	return $TRUE
+}
+
+function RunRequestLicense
+{
+	CONOUT "`nRequest Consumer ESU License ..."
+	$bRet = DoRequestLicense
+	CONOUT ("Operation result: " + ("Failure", "Success")[$bRet])
+	$msaToken = $script:accToken
+	#$eRet = DoEnroll
+	CheckEligibility
+	ExitScript !$bRet
+}
+
+function LocalEnroll
+{
+	CONOUT "`nObtain Authorization Local Token ..."
+	$script:accToken = TokenLocalAccount
+	if ($null -eq $script:accToken) {
+		CONOUT "Operation Failed."
+		CONOUT "`nLicensing is not possible without authorization."
+		ExitScript 1
+	}
+	RunRequestLicense
+}
+#endregion
+
 #region DisabledFunctions
 if ($bAcquireLicense) {
 	CONOUT "`nAcquire License is not possible without enrollment."
 	ExitScript 1
 	#RunAcquireLicense
-}
-
-if ($bLocalAccount) {
-	CONOUT "`nEnrollment is not possible with Local user account."
-	ExitScript 1
 }
 #endregion
 
@@ -567,10 +631,10 @@ if ($bRemoveLicense) {
 if ($bResetFCon) {
 	CONOUT "`nReset Consumer ESU features to the default state ..."
 	RunService
-	ResetConfig 57517687 "4011992206"
-	ResetConfig 58992578 "2216818319"
-	ResetConfig 58755790 "2642149007"
-	ResetConfig 59064570 "4109366415"
+	DefConfig 57517687 "4011992206"
+	DefConfig 58992578 "2216818319"
+	DefConfig 58755790 "2642149007"
+	DefConfig 59064570 "4109366415"
 	RunTask
 	RevertService
 	CheckEligibility
@@ -619,10 +683,14 @@ if (!$supported) {
 	#CONOUT "Run the script with -License parameter to force acquire license."
 	ExitScript 1
 }
-if ($esuResult -eq 1 -And ($esuStatus -eq 3 -Or $esuStatus -eq 11 -Or $esuStatus -eq 12) -And !$bProceed) {
+if ($esuResult -eq 1 -And $esuStatus -eq 3 -And !$bProceed) {
 	CONOUT "`nYour PC is already enrolled for Consumer ESU."
 	CONOUT "No need to proceed."
 	ExitScript 0
+}
+
+if ($bLocalAccount) {
+	LocalEnroll
 }
 
 if ($DMA_SSO) {
@@ -633,22 +701,18 @@ if ($DMA_SSO) {
 	ReRegion $GeoId
 }
 
-if ($null -eq $msaToken) {
+if ($null -eq $msaToken -And ($bMsAccountUser -Or $bMsAccountStore)) {
 	CONOUT "`nEnrollment is not possible without Microsoft Account Token."
+	CONOUT "`nRun the script without parameters to obtain local token."
 	ExitScript 1
-	if (!$bDefault) {
-		CONOUT "`nRun the script without parameters to obtain other tokens."
-		ExitScript 1
-	}
-	RunAcquireLicense
+}
+
+if ($null -eq $msaToken -And $bDefault) {
+	LocalEnroll
 }
 
 $eRet = DoEnroll
-if (!$eRet) {
-	CheckEligibility
-	ExitScript !$eRet
-}
 # GetEligibility
 CheckEligibility
-ExitScript 0
+ExitScript !$eRet
 #endregion
